@@ -50,7 +50,7 @@ def fetch_us_price(codes: list, out_dir: str, periods: list) -> dict:
     """
     cache_p = os.path.join(out_dir, 'march_closes.json')
     if os.path.exists(cache_p) and os.path.getsize(cache_p) > 0 \
-       and (time.time()-os.path.getmtime(cache_p))/86400 < 7:
+       and (time.time()-os.path.getmtime(cache_p))/86400 < 30:
         try:
             with open(cache_p) as f:
                 data = json.load(f)
@@ -69,24 +69,30 @@ def fetch_us_price(codes: list, out_dir: str, periods: list) -> dict:
     def adjust_for_splits(df):
         """
         检测拆股并前复权修正。
-        从最新拆股到最旧逆向处理：每到一处拆股点，
-        将拆股点之前的所有close价格除以拆股比例。
-        一次遍历完成，不迭代。
+        正向拆股（价格暴跌>40%）：将拆股点之前的所有close价格除以拆股比例。
+        反向拆股（价格暴涨>300%）：将拆股点之前的所有close价格乘以拆股比例（1:8逆拆股后股数减为1/8，但每股价涨8倍）。
+        从最新到最旧逆向处理，一次遍历完成。
         """
         df = df.sort_values('date').reset_index(drop=True)
         df['pct_chg'] = df['close'].pct_change()
-        # 找单日跌幅>40%的点（拆股特征）
-        split_idx = df[df['pct_chg'] < -0.4].index.tolist()
-        if not split_idx:
-            df = df.drop(columns=['pct_chg'], errors='ignore')
-            return df
-        # 从新到旧逆向处理（一次遍历）
-        for idx in reversed(split_idx):
-            prev_close = df.loc[idx - 1, 'close']
+        # 正向拆股：单日跌幅>40%（如 4:1 导致 -75%）
+        forward_idx = df[df['pct_chg'] < -0.4].index.tolist()
+        # 反向拆股：单日涨幅>200%（如 1:8 逆拆股导致 +700%）
+        reverse_idx = df[df['pct_chg'] > 2.0].index.tolist()
+        # 从新到旧逆向处理（先处理反向拆股，再处理正向拆股）
+        for idx in reversed(reverse_idx):
+            prev_close = df.loc[idx - 1, 'close'] if idx > 0 else 0
+            curr_close = df.loc[idx, 'close']
+            if curr_close > 0 and prev_close > 0:
+                ratio = max(2, int(round(curr_close / prev_close)))
+                # 反向拆股：将之前的价格乘以比例（1:8逆拆股后每股价涨8倍）
+                df.loc[:idx-1, 'close'] = df.loc[:idx-1, 'close'] * ratio
+        for idx in reversed(forward_idx):
+            prev_close = df.loc[idx - 1, 'close'] if idx > 0 else 0
             curr_close = df.loc[idx, 'close']
             if curr_close > 0 and prev_close > 0:
                 ratio = max(2, int(round(prev_close / curr_close)))
-                # 只修正拆股点之前的价格（不含当天）
+                # 正向拆股：将之前的价格除以比例
                 df.loc[:idx-1, 'close'] = df.loc[:idx-1, 'close'] / ratio
         df = df.drop(columns=['pct_chg'], errors='ignore')
         return df
@@ -135,7 +141,7 @@ def fetch_us_revenue(codes: list, out_dir: str, periods: list) -> dict:
     """
     cache_p = os.path.join(out_dir, 'us_revenue.json')
     if os.path.exists(cache_p) and os.path.getsize(cache_p) > 0 \
-       and (time.time()-os.path.getmtime(cache_p))/86400 < 7:
+       and (time.time()-os.path.getmtime(cache_p))/86400 < 30:
         try:
             with open(cache_p) as f:
                 data = json.load(f)

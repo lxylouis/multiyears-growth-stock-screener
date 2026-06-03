@@ -36,9 +36,8 @@ python3 run.py --index hsi        # 恒生指数全部
 # 自定义窗口
 python3 run.py --index sp500 --window-years 5 --num-windows 5
 
-# 自定义基准
-python3 run.py --index sp500 --window-years 5 --num-windows 5 \
-  --price-base-yyyymm 2026-03 --revenue-base-yyyy 2025
+# 强制刷新（清缓存重下）
+python3 run.py --index sp500 --window-years 3 --num-windows 5 --refresh
 
 # 分步运行
 python3 run.py --index sp500 --mode price        # 仅股价
@@ -94,6 +93,7 @@ python3 run.py --index sp500 --mode dual         # 仅双维度
 | `--num-windows` | 5 | 个 | 从基准年往过去推几个窗口（YAML defaults 优先，默认5期） |
 | `--price-base-yyyymm` | 今年3月 | `YYYY-MM` | 股价基准年月 |
 | `--revenue-base-yyyy` | 因市场而异 | `YYYY` | 营收基准年 |
+| `--refresh` | 否 | flag | 强制删除缓存并重新下载所有数据 |
 
 **时间窗口推算**：当 YAML 的 `defaults` 节配置了 `window_years` 或 `num_windows`，无需 CLI 参数即可自动生成 periods。示例：
 
@@ -104,6 +104,24 @@ python3 run.py --index csi300
 # 自定义覆盖
 python3 run.py --index sp500 --window-years 5 --num-windows 5
 ```
+
+## CAGR 跨窗口折算公式
+
+修改 `window_years` 时，阈值必须按等价 CAGR 重算：
+
+```
+new_threshold = old_threshold ^ (new_window_years / old_window_years)
+```
+
+**常用折算速查**（等价 CAGR 约 9.1% / 14.5%）：
+
+| 窗口 | cond_a_min（~9.1% CAGR） | cond_b_threshold（~14.5% CAGR） |
+|:---|---:|:---:|
+| 3年 | **1.3** | **1.5** |
+| 4年 | **1.42** | **1.73** |
+| 5年 | **1.55** | **1.96** |
+
+> 折算确保年化门槛一致，窗口长短只影响通过率——窗口越短越越容易受单年波动干扰，实际通过率会比等 CAGR 的 5 年窗口更严格。
 
 ## 筛选规则
 
@@ -169,6 +187,7 @@ python3 run.py --index sp500 --window-years 5 --num-windows 5
 | `union-filter-dominance.md` | A∪B 并集的行为陷阱：条件A主导效应 |
 | `or-dominance-analysis.md` | OR 并集定量分析：调整 cond_b 几乎无效的实证 |
 | `caching-patterns.md` | 缓存策略与强制刷新方法 |
+| `gfw-data-limitations.md` | GFW 环境下各 AkShare API 可用性实测（腾讯云，2026-06-03） |
 
 ## 数据源
 
@@ -178,7 +197,7 @@ python3 run.py --index sp500 --window-years 5 --num-windows 5
 |:---|---:|:---:|
 | A股 | AKShare `stock_zh_a_hist`（前复权） | AKShare `stock_financial_abstract` |
 | 港股 | AKShare `stock_hk_hist` | AKShare `stock_financial_hk_report_em` |
-| 美股 | AKShare `stock_us_daily` + 自实现前复权 | AKShare `stock_financial_us_report_em` |
+| 美股 | AKShare `stock_us_daily`（新浪，原生 `adjust='qfq'` 前复权。东方财富 `stock_us_hist` GFW 下不可用） | AKShare `stock_financial_us_report_em` |
 
 ## 为什么不同市场用不同的成分股获取方式
 
@@ -212,7 +231,13 @@ CLI 参数名末尾附带了可接受的**格式单位**，使用者看到参数
 ## 注意事项
 
 1. **缓存**：股价缓存 7 天，强制刷新则删 `~/.hermes/stock_cache/<指数>/march_closes.json`
-2. **美股前复权**：自实现拆股检测+逆向修正，确保历史价格统一到最新股本口径
+2. **美股前复权**：**不推荐直接用 `stock_us_daily(adjust='qfq')` 新浪原生前复权。** 实测（2026-06-03）发现新浪前复权对所有长历史股票都存在系统性 bug——早期年份出现大量负数价格（AAPL 有 6027 行负数，GE 有 2741 行，MSFT 有 5575 行）。已知 CIEN/AI 的复权因子错误只是冰山一角。
+
+   正确的做法：用 `stock_us_daily(adjust='')` 获取未复权原始数据，再通过 `lib/data_us.py` 的 `adjust_for_splits()` 自实现拆股修正。该函数同时检测两种拆股方向：
+   - **正向拆股**（如 4:1）：`pct_change < -0.4`（单日跌幅 >40%）→ 之前的价格 **除以** 比例
+   - **反向拆股**（如 1:8 逆拆）：`pct_change > 2.0`（单日涨幅 >200%）→ 之前的价格 **乘以** 比例
+   
+   遗漏反向拆股检测会导致增长倍率虚高（GE 1:8 逆拆股漏检时 2019→2024 增长被算成 17.6x，真实仅为 2.20x）。\n   **数据源验证（腾讯云 GFW 环境，2026-06-03）**：\n   - `stock_us_daily`（新浪）— ✅ 可用（9960+ 行/AAPL），支持 `adjust='qfq'`\n   - `stock_us_hist`（东方财富）— ❌ 被墙，间歇性通但不可靠\n   - `stock_us_spot_em`（东方财富）— ❌ 被墙\n   - `stock_us_famous_spot_em`（东方财富）— ❌ 被墙\n   结论：本服务器环境下美股数据只能走新浪源。东方财富的美股 API 不可用。
 3. **GE 分拆**：标普500中 GE 因 2023 年分拆导致倍率虚高，需单独说明
 4. **营收期数差异**：美股/港股最新年报通常到去年（慢于A股），双维度自动对齐较短期数
 5. **新增指数**：在 configs/ 下创建 `<名>.yaml` 即可，参考 csi300.yaml 格式
@@ -221,13 +246,14 @@ CLI 参数名末尾附带了可接受的**格式单位**，使用者看到参数
 8. **参数全局迁移完整流程**（2026-06-03 精炼版）：做参数默认值、窗口、阈值等全局修改时，按此顺序执行：
    ```
    Step 1  grep 全仓库   多模式组合捕获所有写法（数字、注释、示例代码块）
-   Step 2  改 configs/    三个指数的 YAML + 模板
-   Step 3  改 lib/*.py    函数签名默认值 + docstring 示例
+   Step 2  改 configs/    三个指数的 YAML + 模板（易漏！）
+   Step 3  改 lib/*.py    函数签名默认值 + docstring 示例 + charts.py 硬编码标签
    Step 4  改 run.py      fallback 默认值 + CLI help 文字 + docstring 示例
    Step 5  改 README.md    参数表 + 示例段落（目视检查代码块中的硬编码）
-   Step 6  改 SKILL.md     自身注意事项中的旧数值
+   Step 6  改 SKILL.md     自身注意事项中的旧数值 + CAGR 折算表
    Step 7  改 references/  历史数据标注"旧配置"、默认值表格刷新
    Step 8  grep 全仓库验证  确认无残留（排除 references/ 中的历史标注）
+   Step 9  跑三市验证 + 检查报告方法论段落   确认报告中的参数正确反映了新值
    ```
    **grep 多模式必查清单**（Step 1 & Step 8）：
    ```bash
@@ -250,13 +276,11 @@ CLI 参数名末尾附带了可接受的**格式单位**，使用者看到参数
     - **该API的列名是英文 `code` / `name`，不是中文 `代码` / `名称`**。写错列名会导致 JSON decode 失败或 KeyError，回退到代码显示
     - `run.py` 中股价和营收两个分支都需要调用 `fetch_cn_names()`，漏一个则对应报告的股票名仍然是代码
     - **名称空格问题**：`ak.stock_info_a_code_name()` 返回的名称可能包含多余空格（如「五 粮 液」）。`fetch_cn_names()` 必须调用 `.replace(' ', '').replace('\\u3000', '')` 清理后再返回。
-    - **代码前导0问题**：A股6位数字代码在 pandas DataFrame 中可能被转为 int（如 `000001` → `1`），写入 DOCX 时前导0丢失。`run.py` 中构建完 DataFrame 后必须执行 `fp_df['代码'] = fp_df['代码'].astype(str).str.zfill(6)`，股价和营收两个分支各做一次。
+    - **代码前导0问题**：A股6位数字代码在 pandas DataFrame 中可能被转为 int（如 `000001` → `1`），写入 DOCX 时前导0丢失。`run.py` 中构建完 DataFrame 后股价和营收两个分支各执行一次 `fp_df['代码'] = fp_df['代码'].astype(str).str.zfill(6)`，但**必须仅在 `market == 'cn'` 时执行**——美股代码（如 CVNA、NVDA）加前导零后会变成 `00CVNA`、`00NVDA`。如果 A、H、US 三市共用 run.py 的统一代码构建路径，一定要用 `if market == 'cn':` 包裹 zfill 逻辑。
 
 14. **双维度左连接遗漏**：dual 分析从 `price_df` 做 `left join rev_df`，因此**只有同时有股价数据的股票才进入双维度分析**。营收筛选通过的股票如果缺少完整 window_years 年股价历史（如次新股上市不足），会被静默排除。这不是bug，但解读双维度通过数时需要了解。详见 `references/dual-analysis-pitfalls.md`。
 
 15. **阈值调整后必跑三市对比 + 并行加速**：修改筛选规则后必须跑完所有三个指数（sp500/csi300/hsi）并做新旧对比，因为不同市场的通过率响应差异很大。用 `delegate_task` 并行跑三个市场（各需~60s），总耗时约70s（而非串行180s）。并行 context 中必须加入 `CONSTRAINT: Do NOT modify any .py, .yaml, .csv, .md, or .json files. Only run the command and report output.` 防止子代理修改配置。
-
-17. **3档提案模式**：当用户问"换一种窗口/阈值怎么定"时，不要只给一个数字。先做定量分析（CAGR折算），然后给出3档选项并推荐方案A（等价CAGR）：等价 | 宽松（补偿窗口波动） | 严格（提高标准）。先说"先跑方案A看看"——用户想先看数据再做决定，不是你替他选。详见 `references/threshold-calibration.md` 第三步。
 
 16. **Git多作者署名**：Agent和人协作的项目，committer应为人类，Co-authored-by标注Agent。当Repo首次推送后用户要求修正时，全部commit squash为一个重设作者：
     ```bash
@@ -274,3 +298,9 @@ CLI 参数名末尾附带了可接受的**格式单位**，使用者看到参数
     # 新仓库可接受force push
     git push --force-with-lease
     ```
+
+17. **3档提案模式**：当用户问"换一种窗口/阈值怎么定"时，不要只给一个数字。先做定量分析（CAGR折算），然后给出3档选项并推荐方案A（等价CAGR）：等价 | 宽松（补偿窗口波动） | 严格（提高标准）。先说"先跑方案A看看"——用户想先看数据再做决定，不是你替他选。详见 `references/threshold-calibration.md` 第三步。
+
+18. **报告方法论实时验证**：修改参数后重新跑报告，**在发送前必须检查报告的方法论概要章节**是否正确反映了新参数值。具体操作：`python3 -c "from docx import Document; doc=Document('xxx.docx'); [print(p.text[:200]) for p in doc.paragraphs if '保留条件' in p.text or '时间窗口' in p.text or '评分' in p.text]"`。如发现仍为旧值，说明 report.py 的方法论描述使用了硬编码字符串而非动态参数——回归检查 report.py 中 build_price_report/build_dual_report 的字符串模板是否正常插值。
+
+19. **全流程：改代码/参数→冒烟测试→跑三市→验证报告→推仓库**（高频操作模式）：\n    ```\n    0. 改完核心逻辑后先做冒烟测试（smoke test），用 1-3 只典型股票验证修改正确\n       - 正向拆股测试：AAPL（4:1 in 2020）\n       - 反向拆股测试：GE（1:8 in 2021）\n       - 无拆股测试：MSFT（仅早期拆分）\n       - 验证无负数价格产生\n    1. 更新三个 YAML config 的 defaults + screening 段\n    2. 确认 YAML 的 periods 不需要手改（defaults 自动覆盖）\n    3. 用 delegate_task 并行跑三个市场（--window-years X --num-windows Y）\n    4. 汇总通过率对比表（新旧对比）\n    5. 分步生成股价/营收/双维度报告（--mode price/revenue/dual，三个市场共9份）\n    6. 验证报告方法论参数正确（用上一条的 docx 检查）\n    7. 用 `from docx import Document` 检查报告中的代码列是否格式正确（美股不应有前导零）\n    8. 复制到项目目录 → lark-cli 发送（必须用 cp 而非 ln -s，lark-cli 拒绝解析软链）\n    9. 清理临时副本\n    10. 用户确认无误后推仓库（不要自行推送，用户会说\"推\"或\"不要急着推\"）\n    ```\n    注：delegate_task 并行三个市场时必须在 context 中加入子代理保护约束，三市场的子代理间无需等待。

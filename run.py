@@ -84,6 +84,8 @@ def main():
                         help='股价基准年月，格式 YYYY-MM（如 2026-03），默认今年3月')
     parser.add_argument('--revenue-base-yyyy', type=int, default=None,
                         help='营收基准年（如 2026），默认A股=今年，美股/港股=去年')
+    parser.add_argument('--refresh', action='store_true',
+                        help='强制重新下载所有数据，忽略缓存')
     args = parser.parse_args()
 
     config = load_config(args.index)
@@ -91,6 +93,14 @@ def main():
     market = config['index']['market']
     out_dir = os.path.expanduser(config.get('output_dir'))
     os.makedirs(out_dir, exist_ok=True)
+
+    # ── 强制刷新缓存 ──
+    if args.refresh:
+        for fname in ['march_closes.json', 'us_revenue.json', 'hk_revenue.json', 'revenue_data.json']:
+            fpath = os.path.join(out_dir, fname)
+            if os.path.exists(fpath):
+                os.remove(fpath)
+                print(f'🗑️  删除缓存: {fname}')
 
     # ── 筛选阈值（从YAML读取，可被默认值覆盖） ──
     screening = config.get('screening', {})
@@ -197,7 +207,8 @@ def main():
             rows.append(row)
 
         fp_df = pd.DataFrame(rows)
-        fp_df['代码'] = fp_df['代码'].astype(str).str.zfill(6)
+        if market == 'cn':
+            fp_df['代码'] = fp_df['代码'].astype(str).str.zfill(6)
         print(f'  ✅ {len(fp_df)} 只有效数据')
 
         pp = filter_by_growth(fp_df, p_mc, cond_a_min=cond_a_min, cond_b_threshold=cond_b_threshold)
@@ -279,7 +290,8 @@ def main():
             rows.append(row)
 
         fp_df = pd.DataFrame(rows)
-        fp_df['代码'] = fp_df['代码'].astype(str).str.zfill(6)
+        if market == 'cn':
+            fp_df['代码'] = fp_df['代码'].astype(str).str.zfill(6)
         print(f'  ✅ {len(fp_df)} 只有效营收数据')
         pp = filter_by_growth(fp_df, r_mc, cond_a_min=cond_a_min, cond_b_threshold=cond_b_threshold)
         t20 = pp.head(min(20, len(pp)))

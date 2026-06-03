@@ -108,7 +108,7 @@ def fetch_hk_price(codes: list, out_dir: str, periods: list) -> dict:
     """
     cache_p = os.path.join(out_dir, 'march_closes.json')
     if os.path.exists(cache_p) and os.path.getsize(cache_p) > 0 \
-       and (time.time()-os.path.getmtime(cache_p))/86400 < 7:
+       and (time.time()-os.path.getmtime(cache_p))/86400 < 30:
         try:
             with open(cache_p) as f:
                 data = json.load(f)
@@ -169,7 +169,7 @@ def fetch_hk_revenue(codes: list, out_dir: str, periods: list) -> dict:
     """
     cache_p = os.path.join(out_dir, 'hk_revenue.json')
     if os.path.exists(cache_p) and os.path.getsize(cache_p) > 0 \
-       and (time.time()-os.path.getmtime(cache_p))/86400 < 7:
+       and (time.time()-os.path.getmtime(cache_p))/86400 < 30:
         try:
             with open(cache_p) as f:
                 data = json.load(f)
