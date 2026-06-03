@@ -13,10 +13,16 @@
 # 默认参数（可被 run.py CLI 参数覆盖）
 defaults:
   window_years: 5
-  num_windows: 5
+  num_windows: 3
+# ───────────────────────────────────────────────────
+# 筛选阈值
+screening:
+  cond_a_min: 0.9
+  cond_b_threshold: 2.0
 # ───────────────────────────────────────────────────
 # 调整方法：修改下方 periods 数组即可重新定义全部时间窗口。
 # price 和 revenue 的期数可以不同，双维度分析会自动对齐较短的期数。
+# 若提供 defaults.window_years / num_windows，periods 将被自动覆盖。
 index:
   name: "标普500"
   code: "SPX"
@@ -29,8 +35,8 @@ stock_codes:
   name_col: "Company Name"
 
 periods:
-  price: [[2022,2017],[2023,2018],[2024,2019],[2025,2020],[2026,2021]]
-  revenue: [[2021,2016],[2022,2017],[2023,2018],[2024,2019],[2025,2020]]
-  labels: ['22/17','23/18','24/19','25/20','26/21']
+  price: [[2024,2019],[2025,2020],[2026,2021]]
+  revenue: [[2023,2018],[2024,2019],[2025,2020]]
+  labels: ['24/19','25/20','26/21']
 
 output_dir: "~/.hermes/stock_cache/sp500_analysis"

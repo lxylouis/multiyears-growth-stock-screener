@@ -92,6 +92,11 @@ def main():
     out_dir = os.path.expanduser(config.get('output_dir'))
     os.makedirs(out_dir, exist_ok=True)
 
+    # ── 筛选阈值（从YAML读取，可被默认值覆盖） ──
+    screening = config.get('screening', {})
+    cond_a_min = screening.get('cond_a_min', 0.9)
+    cond_b_threshold = screening.get('cond_b_threshold', 2.0)
+
     # ── 确定时间窗口 ──
     window_years = args.window_years or config.get('defaults', {}).get('window_years', 5)
     num_windows = args.num_windows or config.get('defaults', {}).get('num_windows',
@@ -116,7 +121,12 @@ def main():
         ry_base = this_year - 1  # 最新年报为去年 - 1
 
     # ── 生成/加载 periods 和 labels ──
-    if args.window_years or args.num_windows or args.price_base_yyyymm or args.revenue_base_yyyy:
+    # 优先从 defaults + CLI 自动生成，无 CLI 无 defaults 时回退到 YAML 硬编码 periods
+    use_auto = (args.window_years is not None or args.num_windows is not None
+                or args.price_base_yyyymm or args.revenue_base_yyyy
+                or config.get('defaults', {}).get('window_years')
+                or config.get('defaults', {}).get('num_windows'))
+    if use_auto:
         price_periods = auto_periods(py_base, window_years, num_windows)
         rev_periods = auto_periods(ry_base, window_years, num_windows)
         price_labels = auto_labels(price_periods, month=pm)
@@ -189,9 +199,10 @@ def main():
         fp_df = pd.DataFrame(rows)
         print(f'  ✅ {len(fp_df)} 只有效数据')
 
-        pp = filter_by_growth(fp_df, p_mc)
+        pp = filter_by_growth(fp_df, p_mc, cond_a_min=cond_a_min, cond_b_threshold=cond_b_threshold)
         t20 = pp.head(min(20, len(pp)))
-        print(f'  ✅ 筛选通过: {len(pp)}/{len(fp_df)} 只 (保留条件：全期≥0.9 ∪ 最新期>1.5)')
+        print(f'  ✅ 筛选通过: {len(pp)}/{len(fp_df)} 只 '
+              f'(cond_a_min≥{cond_a_min} ∪ cond_b_threshold>{cond_b_threshold}, CAGR≈14.9%)')
 
         fp_df.to_csv(os.path.join(out_dir, 'all_stocks_price.csv'), index=False, encoding='utf-8-sig')
 
@@ -266,9 +277,10 @@ def main():
 
         fp_df = pd.DataFrame(rows)
         print(f'  ✅ {len(fp_df)} 只有效营收数据')
-        pp = filter_by_growth(fp_df, r_mc)
+        pp = filter_by_growth(fp_df, r_mc, cond_a_min=cond_a_min, cond_b_threshold=cond_b_threshold)
         t20 = pp.head(min(20, len(pp)))
-        print(f'  ✅ 营收筛选通过: {len(pp)}/{len(fp_df)} 只 (保留条件：全期≥0.9 ∪ 最新期>1.5)')
+        print(f'  ✅ 营收筛选通过: {len(pp)}/{len(fp_df)} 只 '
+              f'(cond_a_min≥{cond_a_min} ∪ cond_b_threshold>{cond_b_threshold}, CAGR≈14.9%)')
 
         fp_df.to_csv(os.path.join(out_dir, 'all_stocks_revenue.csv'), index=False, encoding='utf-8-sig')
 
@@ -322,8 +334,8 @@ def main():
         price_df['分数'] = sum(price_df[c]*w for c,w in zip(p_mc, cw))
         rev_df['分数'] = sum(rev_df[c]*w for c,w in zip(r_mc, cw))
 
-        price_pp = filter_by_growth(price_df, p_mc)
-        rev_pp = filter_by_growth(rev_df, r_mc)
+        price_pp = filter_by_growth(price_df, p_mc, cond_a_min=cond_a_min, cond_b_threshold=cond_b_threshold)
+        rev_pp = filter_by_growth(rev_df, r_mc, cond_a_min=cond_a_min, cond_b_threshold=cond_b_threshold)
 
         merged = price_df[['代码','名称','行业','分数']].rename(columns={'分数':'股价分数'}).copy()
         merged = merged.merge(rev_df[['代码','分数']].rename(columns={'分数':'营收分数'}),

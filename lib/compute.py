@@ -98,22 +98,26 @@ def compute_scores(df: pd.DataFrame, mult_cols: list, weights: list) -> pd.DataF
     return df
 
 
-def filter_by_growth(df: pd.DataFrame, mult_cols: list) -> pd.DataFrame:
+def filter_by_growth(df: pd.DataFrame, mult_cols: list,
+                     cond_a_min: float = 0.9,
+                     cond_b_threshold: float = 2.0) -> pd.DataFrame:
     """
     增长筛选规则：
-      保留条件 = (所有周期倍率 ≥ 0.9) ∪ (最新周期倍率 > 1.5)
+      保留条件 = (所有周期倍率 ≥ cond_a_min) ∪ (最新周期倍率 > cond_b_threshold)
 
     逻辑说明：
-      - 条件A：过去每一期（从最早到最新）增长倍率均不低于0.9（即没有大幅衰退）
-      - 条件B：最新一期增长倍率超过1.5（即最近5年增长强劲）
+      - 条件A：过去每一期（从最早到最新）增长倍率均不低于 cond_a_min（即没有大幅衰退）
+      - 条件B：最新一期增长倍率超过 cond_b_threshold（统一 2.0x，对应 14.87% CAGR）
       - 两个条件满足其一即保留，取并集
 
-    返回按分数降序排列的DataFrame，附带年均化增长率
+    参数:
+      cond_a_min: 条件A阈值，所有窗口倍率均不低于此值（默认 0.9，防大幅衰退）
+      cond_b_threshold: 条件B阈值，最新窗口倍率超过此值（默认 2.0x，5年翻倍 ≈ 14.87% CAGR）
     """
     cond_a = df.copy()
     for c in mult_cols:
-        cond_a = cond_a[~(cond_a[c] < 0.9)]
-    cond_b = df[df[mult_cols[-1]] > 1.5]
+        cond_a = cond_a[~(cond_a[c] < cond_a_min)]
+    cond_b = df[df[mult_cols[-1]] > cond_b_threshold]
     result = pd.concat([cond_a, cond_b]).drop_duplicates(subset=['代码'])
     result = result.sort_values('分数', ascending=False).reset_index(drop=True)
     result['年均化'] = result['平均倍率'].apply(
