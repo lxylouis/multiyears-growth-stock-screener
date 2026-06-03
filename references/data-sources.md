@@ -1,89 +1,86 @@
-# 数据源参考
+# 数据源说明
 
-## A股（沪深300）
+## A股（csi300）
 
-### 股价
-- **函数**: `ak.stock_zh_a_hist(symbol="000300", period="daily", adjust="qfq")`
-- **返回值**: DataFrame 含 `日期`、`开盘`、`收盘`、`最高`、`最低`、`成交量`
-- **复权**: AKShare 已内置 `qfq`（前复权），无需额外处理
-- **获取成分股**: `ak.index_stock_cons("000300")` → 直接返回代码列表
-- **特点**: A股数据最完整，2016年至今所有数据可用；费率限制低
-
-### 营收
-- **函数**: `ak.stock_financial_abstract_ths(symbol)`（同花顺版）
-- **返回值**: DataFrame，需提取 `营业总收入` 列
-- **数据类型**: 字符串含逗号分隔符（如 "123,456,789"），需 `str.replace(",","")` 后转 float
-- **年份处理**: 年报通常在次年4月底前出完，6月时A股可达最新年报（2026年）
-
-## 港股（恒生指数）
+### 成分股获取
+```python
+ak.index_stock_cons("000300")
+```
+列名：`品种代码`（字符串）。
 
 ### 股价
-- **函数**: `ak.stock_hk_hist(symbol="00001", period="daily")`
-- **返回值**: DataFrame 含 `开盘`、`收盘`、`最高`、`最低`
-- **代码格式**: 需要 `00xxx` 但获取日线时不能加交易所后缀
-- **复权**: 港股日线默认原始价（复权情况不透明），直接用原始价
-### 成分股
-需要手动维护列表或从恒生指数官网获取。本项目在 hsi.yaml 中硬编码了93只
-
-### ⚠️ 名称 API 不稳定
-`ak.stock_hk_spot()` 用于获取港股名称，但在腾讯云GFW环境下经常返回空数据（`Length mismatch` 错误）。`lib/data_hk.py` 中的 `fetch_hk_names()` 已内置后备方案：
-
-1. 先尝试 `ak.stock_hk_spot()` 实时获取名称
-2. 失败时自动回退到 `HSI_NAMES` 硬编码字典（约95只名称）
-3. 仅影响名称显示，不影响数据和筛选结果
+```python
+ak.stock_zh_a_daily(symbol="sh600519", adjust="qfq")
+```
+前复权日线。筛选每年3月末最后一个交易日收盘价。
 
 ### 营收
-- **函数**: `ak.stock_financial_hk_report_em(symbol, indicator="营业总收入")`
-- **返回值**: 字典，键为年份字符串，值为营收数（单位：元）
-- **特点**: 港股年报披露慢于A股，最新完整年报通常到2025年。年度数据需用 `indicator` 参数指定。
+```python
+ak.stock_financial_abstract_ths(symbol="600519")
+```
+年报（12-31）营业总收入。注意列名包含全角空格，`parse_financial_value()` 做了特殊解析。
 
-## 美股（标普500）
+### 股票名称（重要）
+```python
+ak.stock_info_a_code_name()  # 列名: code, name（英文）
+```
 
-### 股价 — 需前复权修正
-- **函数**: `ak.stock_us_daily(symbol="AAPL", adjust="")`
-- **返回值**: DataFrame 含 `open`、`close`、`high`、`low`、`volume`
-- **⚠️ 复权问题**: stock_us_daily() 不接受 adjust 参数，始终返回原始价格
-- **拆股检测**:
-  ```
-  1. 对 close 列计算 pct_change()（日收益率）
-  2. 找单日跌幅 > 40% 的点 → 疑似拆股
-  3. 验证：触发前15日均价 > 触发后15日均价的2倍 → 确认拆股
-  4. 拆股比例 ≈ 触发前均价 ÷ 触发后均价（四舍五入到最近整数比，如 4:1）
-  ```
-- **前复权修正**:
-  ```
-  1. 从最新拆股往最旧逆向处理
-  2. 每一步：将拆股点之前所有 close 除以拆股比例
-  3. 一次性遍历完成，不迭代
-  ```
-- **缓存**: `march_closes.json` 缓存7天。缓存读取需处理 JSONDecodeError（空文件/损坏），读失败时自动删缓存重下
+**列名陷阱**：该API返回英文列名 `code` / `name`，不是中文 `代码` / `名称`。用错列名会导致 KeyError 或 JSON decode 失败。
 
-### 营收
-- **函数**: `ak.stock_financial_us_report_em(symbol)`
-- **返回值**: DataFrame 含 `报告期`、`营业总收入`（字符串格式）
-- **年份提取**: 从 `报告期` 列提取年份，用最新年报（FY年）。美企财年不一定等于自然年，本项目简化为取自然年份
-- **数据类型**: 营收值含逗号分隔符，需 `str.replace(",","")` 后转 float
+**空格陷阱**：返回的名称可能包含多余空格（如「五 粮 液」→"五 粮 液"），必须清理 `.replace(' ', '').replace('\u3000', '')`。
+
+**代码前导零**：A股代码为6位数字（000001），在pandas DataFrame中可能被转为int，写入CSV或DOCX时前导0丢失。必须在构建DataFrame后执行 `.astype(str).str.zfill(6)`。
+
+**双分支需各做一次**：`run.py` 中股价和营收两个分支各自定义了自己的 `names` 字典，两个分支都需要调用 `fetch_cn_names()`，漏一个则对应报告的股票名仍是代码。
+
+### 缓存
+- 股价：`~/.hermes/stock_cache/<指数>_analysis/march_closes.json`，7天
+- 营收：`~/.hermes/stock_cache/<指数>_analysis/revenue_data.json`，7天
+- 股票名：不缓存，每次从API获取（轻量）
+
+---
+
+## 港股（hsi）
 
 ### 成分股
-- **来源**: SlickCharts CSV，GitHub可直接访问（不翻墙）
-- **文件**: `configs/sp500_constituents.csv`（503只，2026年快照，需定期更新）
+硬编码 `HSI_CODES` 列表（93只），无动态API。
 
-## 缓存管理
+### 股价
+```python
+ak.stock_hk_daily(symbol="00001")
+```
 
-| 缓存文件 | 位置 | 有效期 | 手动刷新 |
-|:---|---:|:---|:---:|
-| 股价缓存 | `~/.hermes/stock_cache/<指数>/march_closes.json` | 7天 | 删文件重跑 |
-| 营收缓存 | 各自 json 文件 | 7天 | 删文件重跑 |
-| CSV 中间文件 | `all_stocks_price.csv` / `all_stocks_revenue.csv` | 不自动过期 | 需手动清理 |
-| 旧版 DOCX 报告 | `*增长分析报告.docx` | 不自动过期 | 改变参数后需手动清理旧报告 |
+### 营收
+```python
+ak.stock_financial_hk_report_em(stock="00001", symbol="利润表", indicator="年度")
+```
+营业总收入通过匹配 `营业额` / `营业收入` / `经营收入总额` 获取。
 
-双维度模式从 CSV 中间文件读取，所以改了时间窗口参数后需要同时跑 price + revenue 刷新中间文件。
+### 股票名称
+```python
+ak.stock_hk_spot()  # 列名: 代码, 中文名称
+```
 
-**注意**：改变 `--window-years`、`--num-windows` 等参数后，缓存目录下旧版 DOCX 报告不会被自动删除。如需清理旧报告：`rm -f ~/.hermes/stock_cache/<指数>/*.docx` 或直接删除整个缓存目录。
+**GFW不稳定**：`stock_hk_spot()` 在腾讯云服务器上经常返回空数据导致 `ValueError: Length mismatch`。`fetch_hk_names()` 实现了自动降级——API失败时回退到 `HSI_NAMES` 硬编码字典。添加新港股指数需补充硬编码名称。
 
-## 已知局限
+---
 
-1. **GE 分拆**：标普500中 GE 在 2023 年分拆为 GE HealthCare 和 GE Vernova。这属于公司分拆（spin-off），非拆股（stock split），前复权算法无法正确处理 → GE 的2026/2021倍率虚高（约16.85pt），需要单独说明
-4. **港股成分股**：恒生指数成分股每季度调整，硬编码列表需要定期更新
-5. **港股名称API**：`ak.stock_hk_spot()` 在腾讯云GFW环境下不可用，依赖 `HSI_NAMES` 硬编码后备。新增港股指数时需补充名称字典
-6. **美股营收基准年**：默认取去年（如2025），如需最新数据需手动调整 `--revenue-base-yyyy`
+## 美股（sp500）
+
+### 成分股
+CSV文件 `configs/sp500_constituents.csv`（SlickCharts导出），503只。
+
+### 股价
+```python
+ak.stock_us_daily(symbol="AAPL")
+```
+原始价格不含复权。本工具自实现拆股检测——单日跌幅>40%且前后价格比>2倍判定为拆股，逆向修正之前所有价格。
+
+### 营收
+```python
+ak.stock_financial_us_report_em(symbol="AAPL")
+```
+利润表营业总收入。
+
+### 股票名称
+从CSV的 `Company Name` 列读取。

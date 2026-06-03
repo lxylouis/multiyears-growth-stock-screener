@@ -95,7 +95,7 @@ def fetch_cn_names(codes: list) -> dict:
         names = {}
         for _, r in info.iterrows():
             names[r['code']] = r['name']
-        valid = {c: names.get(c, c) for c in codes}
+        valid = {c: names.get(c, c).replace(' ', '').replace('\u3000', '') for c in codes}
         print(f"  ✅ 获取 {len(valid)} 只A股名称成功")
         return valid
     except Exception as e:

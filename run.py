@@ -35,8 +35,8 @@ def parse_year_month(val: str):
 def auto_periods(base_year: int, window_years: int, num_windows: int):
     """
     自动生成时间窗口对。
-    例：base_year=2026, window_years=5, num_windows=5
-    → [(2022,2017), (2023,2018), (2024,2019), (2025,2020), (2026,2021)]
+    例：base_year=2026, window_years=3, num_windows=5
+    → [(2022,2019), (2023,2020), (2024,2021), (2025,2022), (2026,2023)]
     """
     return [[base_year - i, base_year - i - window_years]
             for i in range(num_windows - 1, -1, -1)]
@@ -77,9 +77,9 @@ def main():
                         choices=['all', 'price', 'revenue', 'dual'],
                         help='运行模式')
     parser.add_argument('--window-years', type=int, default=None,
-                        help='每个窗口跨多少年（如 5=5年增长倍率，默认从YAML读取）')
+                        help='每个窗口跨多少年（如 3=3年增长倍率，默认从YAML读取）')
     parser.add_argument('--num-windows', type=int, default=None,
-                        help='从基准年往过去推几个窗口（如 5=5个5年窗口，默认从YAML读取）')
+                        help='从基准年往过去推几个窗口（如 5=5个窗口，默认从YAML读取）')
     parser.add_argument('--price-base-yyyymm', type=str, default=None,
                         help='股价基准年月，格式 YYYY-MM（如 2026-03），默认今年3月')
     parser.add_argument('--revenue-base-yyyy', type=int, default=None,
@@ -95,10 +95,10 @@ def main():
     # ── 筛选阈值（从YAML读取，可被默认值覆盖） ──
     screening = config.get('screening', {})
     cond_a_min = screening.get('cond_a_min', 0.9)
-    cond_b_threshold = screening.get('cond_b_threshold', 2.0)
+    cond_b_threshold = screening.get('cond_b_threshold', 1.5)
 
     # ── 确定时间窗口 ──
-    window_years = args.window_years or config.get('defaults', {}).get('window_years', 5)
+    window_years = args.window_years or config.get('defaults', {}).get('window_years', 3)
     num_windows = args.num_windows or config.get('defaults', {}).get('num_windows',
                      len(config.get('periods', {}).get('price', [])))
 
@@ -197,6 +197,7 @@ def main():
             rows.append(row)
 
         fp_df = pd.DataFrame(rows)
+        fp_df['代码'] = fp_df['代码'].astype(str).str.zfill(6)
         print(f'  ✅ {len(fp_df)} 只有效数据')
 
         pp = filter_by_growth(fp_df, p_mc, cond_a_min=cond_a_min, cond_b_threshold=cond_b_threshold)
@@ -227,7 +228,9 @@ def main():
 
         build_price_report(index_name, len(fp_df), len(pp), t20, pp, fp_df,
                           p_mc, price_labels, ch,
-                          os.path.join(out_dir, f'{index_name}_股价增长分析报告.docx'))
+                          os.path.join(out_dir, f'{index_name}_股价增长分析报告.docx'),
+                          cond_a_min=cond_a_min, cond_b_threshold=cond_b_threshold,
+                          window_years=window_years, num_windows=num_windows)
         print(f'  ✅ 股价完成')
 
     # ═══ 营收 ═══
@@ -276,6 +279,7 @@ def main():
             rows.append(row)
 
         fp_df = pd.DataFrame(rows)
+        fp_df['代码'] = fp_df['代码'].astype(str).str.zfill(6)
         print(f'  ✅ {len(fp_df)} 只有效营收数据')
         pp = filter_by_growth(fp_df, r_mc, cond_a_min=cond_a_min, cond_b_threshold=cond_b_threshold)
         t20 = pp.head(min(20, len(pp)))
@@ -308,7 +312,9 @@ def main():
 
         build_price_report(index_name, len(fp_df), len(pp), t20, pp, fp_df,
                           r_mc, revenue_labels, ch,
-                          os.path.join(out_dir, f'{index_name}_营收增长分析报告.docx'))
+                          os.path.join(out_dir, f'{index_name}_营收增长分析报告.docx'),
+                          cond_a_min=cond_a_min, cond_b_threshold=cond_b_threshold,
+                          window_years=window_years, num_windows=num_windows)
         print(f'  ✅ 营收完成')
 
     # ═══ 双维度 ═══
@@ -369,7 +375,9 @@ def main():
 
         build_dual_report(index_name, price_pp, rev_pp, price_df, rev_df, merged,
                          p_mc, r_mc, common_labels, ch,
-                         os.path.join(out_dir, f'{index_name}_双维度增长分析报告.docx'))
+                         os.path.join(out_dir, f'{index_name}_双维度增长分析报告.docx'),
+                         cond_a_min=cond_a_min, cond_b_threshold=cond_b_threshold,
+                         window_years=window_years, num_windows=num_windows)
         print(f'  ✅ 双维度完成')
 
 

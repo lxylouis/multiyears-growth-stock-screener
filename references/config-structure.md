@@ -9,13 +9,13 @@
 ```yaml
 # ── 窗口参数（CLI 参数可覆盖） ──
 defaults:
-  window_years: 5     # 每个窗口跨几年（--window-years 覆盖）
-  num_windows: 3      # 从基准年往过去推几个窗口（--num-windows 覆盖）
+  window_years: 3     # 每个窗口跨几年（--window-years 覆盖）
+  num_windows: 5      # 从基准年往过去推几个窗口（--num-windows 覆盖）
 
 # ── 筛选阈值（当前无 CLI 覆盖） ──
 screening:
-  cond_a_min: 0.9         # 条件A：所有窗口倍率不低于此值
-  cond_b_threshold: 2.0   # 条件B：最新窗口倍率超过此值（≈ 14.87% CAGR）
+  cond_a_min: 1.3         # 条件A：所有窗口倍率不低于此值
+  cond_b_threshold: 1.5   # 条件B：最新窗口倍率超过此值
 
 # ── 指数基本信息 ──
 index:
@@ -59,7 +59,7 @@ CLI 参数（最高） → YAML defaults → YAML periods 硬编码（最低）
 具体逻辑见 run.py：
 
 ```python
-window_years = args.window_years or config.get('defaults', {}).get('window_years', 5)
+window_years = args.window_years or config.get('defaults', {}).get('window_years', 3)
 num_windows = args.num_windows or config.get('defaults', {}).get('num_windows', 
                  len(config.get('periods', {}).get('price', [])))
 
@@ -79,15 +79,15 @@ else:
 
 | 字段 | 默认值 | 含义 | 历史 |
 |:----|:-----:|:-----|:----|
-| `cond_a_min` | 0.9 | 条件A：所有窗口倍率不低于此值（防大幅衰退） | 曾硬编码在 `compute.py` |
-| `cond_b_threshold` | 2.0 | 条件B：最新窗口倍率超过此值（5年翻倍 ≈ 14.87% CAGR） | 曾叫 `latest_threshold`，参数传递 |
+| `cond_a_min` | 1.3 | 条件A：所有窗口倍率不低于此值（防大幅衰退） | 曾硬编码在 `compute.py` |
+| `cond_b_threshold` | 1.5 | 条件B：最新窗口倍率超过此值 | 曾叫 `latest_threshold`，参数传递 |
 
 `compute.py` 中对应函数签名：
 
 ```python
 def filter_by_growth(df: pd.DataFrame, mult_cols: list,
-                     cond_a_min: float = 0.9,
-                     cond_b_threshold: float = 2.0) -> pd.DataFrame:
+                     cond_a_min: float = 1.3,
+                     cond_b_threshold: float = 1.5) -> pd.DataFrame:
 ```
 
 ## 修改阈值时的全覆盖检查清单

@@ -50,7 +50,7 @@ def chart_trend(t20: pd.DataFrame, mult_cols: list, period_labels: list,
     ax.axhline(y=2, c='orange', ls=':', alpha=0.4, lw=1)
     ax.set_yscale('log')
     ax.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.1fx'))
-    ax.set_xlabel('5年滚动周期', fontproperties=_fp(14))
+    ax.set_xlabel('滚动周期', fontproperties=_fp(14))
     ax.set_ylabel('增长倍率（对数）', fontproperties=_fp(14))
     ax.set_title(title, fontproperties=_fp(18))
     ax.grid(True, alpha=0.3)
@@ -80,7 +80,7 @@ def chart_heatmap(t20: pd.DataFrame, mult_cols: list, period_labels: list,
             if v > 0:
                 ax.text(j, i, f'{v:.1f}x', ha='center', va='center', fontsize=8.5,
                         color='white' if v > vmax_cap * 0.4 else 'black', fontproperties=_fp(8))
-    ax.set_xlabel('5年滚动周期', fontproperties=_fp(14))
+    ax.set_xlabel('滚动周期', fontproperties=_fp(14))
     ax.set_title(title, fontproperties=_fp(18))
     cbar_ax = fig.add_axes([0.88, 0.16, 0.018, 0.76])
     plt.colorbar(im, cax=cbar_ax).set_label('倍率', fontproperties=_fp(11))
@@ -133,7 +133,7 @@ def chart_boxplot(pp: pd.DataFrame, mult_cols: list, period_labels: list,
         ax.annotate(f'M={md:.2f}x', (i, md), (i+0.4, md-1.8), ha='center', fontsize=8, color='blue',
                     arrowprops=dict(arrowstyle='->', color='blue', lw=1.5), fontproperties=_fp(8))
     ax.axhline(y=1, color='red', ls='--', alpha=0.5, lw=1.5)
-    ax.set_xlabel('5年滚动周期', fontproperties=_fp(14))
+    ax.set_xlabel('滚动周期', fontproperties=_fp(14))
     ax.set_ylabel('增长倍率', fontproperties=_fp(14))
     ax.set_title(title, fontproperties=_fp(18))
     ax.grid(True, alpha=0.3, axis='y')

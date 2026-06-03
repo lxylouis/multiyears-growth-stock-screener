@@ -124,18 +124,22 @@ class ReportBuilder:
 # ── 标准报告章节工厂 ──
 
 def build_price_report(index_name: str, total: int, passed: int, t20, pp, fp_df,
-                       mult_cols, period_labels, chart_paths: dict, out_path: str):
+                       mult_cols, period_labels, chart_paths: dict, out_path: str,
+                       cond_a_min: float = 1.3, cond_b_threshold: float = 1.5,
+                       window_years: int = 3, num_windows: int = 3):
     """构建统一的股价/营收分析报告"""
     mode = '营收' if '营收' in out_path else '股价'
-    rpt = ReportBuilder(index_name, subtitle=f'{mode}增长 · 5年滚动倍率 · 3月末版')
-    rpt.cover(subtitle=f'{mode}增长 · 5年滚动倍率 · 3月末版',
-              stats=f'保留条件：全期≥0.9 ∪ 最新期>1.5 | 线性递减排序 | 含{total}只成分股')
+    rpt = ReportBuilder(index_name, subtitle=f'{mode}增长 · {window_years}年滚动倍率 · 3月末版')
+    rpt.cover(subtitle=f'{mode}增长 · {window_years}年滚动倍率 · 3月末版',
+              stats=f'保留条件：全期≥{cond_a_min} ∪ 最新期>{cond_b_threshold} | '
+                    f'{window_years}年×{num_windows}期 线性递减排序 | 含{total}只成分股')
 
     # 一、核心结论
     rpt.heading('一、核心结论', 1)
     rpt.para(f'筛选通过 {passed}/{total} 只（{passed/total*100:.0f}%）')
-    rpt.para(f'保留条件：过去每期增长倍率均≥0.9（无大幅衰退），或最新一期倍率>1.5（近5年强劲增长）')
-    rpt.para('')
+    rpt.para(f'保留条件：过去每期增长倍率均≥{cond_a_min}（每{window_years}年至少增长{((cond_a_min**(1/window_years))-1)*100:.1f}%），'
+             f'或最新一期倍率>{cond_b_threshold}（近{window_years}年增长{(cond_b_threshold**(1/window_years))-1:.1%}）')
+    rpt.para(f'时间窗口：{window_years}年×{num_windows}期，线性递减权重（越近越高）')
     rpt.para('▎ TOP5 股票', bold=True, size=12, color=(20, 80, 160))
     for i, (_, r) in enumerate(t20.head(5).iterrows(), 1):
         rpt.para(f'  {i}. {r["名称"]} — {r["分数"]:.2f}pt — 年化{r.get("年均化", 0):.1f}%')
@@ -177,7 +181,9 @@ def build_price_report(index_name: str, total: int, passed: int, t20, pp, fp_df,
 
 
 def build_dual_report(index_name: str, price_pp, rev_pp, price_df, rev_df, merged,
-                      price_mc, rev_mc, period_labels, chart_paths: dict, out_path: str):
+                      price_mc, rev_mc, period_labels, chart_paths: dict, out_path: str,
+                       cond_a_min: float = 1.3, cond_b_threshold: float = 1.5,
+                       window_years: int = 3, num_windows: int = 3):
     """构建统一的股价+营收双维度分析报告"""
     elite = merged[merged['双通过']].sort_values('综合分数', ascending=False).reset_index(drop=True)
     only_price = merged[merged['仅股价']].sort_values('股价分数', ascending=False)
@@ -191,11 +197,12 @@ def build_dual_report(index_name: str, price_pp, rev_pp, price_df, rev_df, merge
 
     # 一、方法论
     rpt.heading('一、方法论概览', 1)
-    rpt.para('数据源：股价=每年3月末收盘价，营收=年报营业总收入')
-    rpt.para('筛选规则：保留条件 = 全期≥0.9 ∪ 最新期>1.5')
-    rpt.para('  · 条件A：过去每一期增长倍率均不低于0.9（无大幅衰退）')
-    rpt.para('  · 条件B：最新一期增长倍率超过1.5（近5年增长强劲）')
-    rpt.para('评分：线性递减权重，越近的周期权重越高（1:2:3:...:n）')
+    rpt.para(f'数据源：股价=每年3月末收盘价，营收=年报营业总收入')
+    rpt.para(f'时间窗口：{window_years}年×{num_windows}期滚动')
+    rpt.para(f'筛选规则：保留条件 = 全期≥{cond_a_min} ∪ 最新期>{cond_b_threshold}')
+    rpt.para(f'  · 条件A：过去每一期增长倍率均不低于{cond_a_min}（每{window_years}年至少增长{((cond_a_min**(1/window_years))-1)*100:.1f}%）')
+    rpt.para(f'  · 条件B：最新一期增长倍率超过{cond_b_threshold}（近{window_years}年增长{(cond_b_threshold**(1/window_years))-1:.1%}）')
+    rpt.para(f'评分：{num_windows}期线性递减权重，越近的周期权重越高（1:2:...:{num_windows}）')
     rpt.para('')
 
     # 对比表
