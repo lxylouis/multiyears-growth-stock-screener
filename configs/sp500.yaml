@@ -18,7 +18,7 @@ defaults:
 # 筛选阈值
 screening:
   cond_a_min: 0.9
-  cond_b_threshold: 2.0
+  cond_b_threshold: 2.5
 # ───────────────────────────────────────────────────
 # 调整方法：修改下方 periods 数组即可重新定义全部时间窗口。
 # price 和 revenue 的期数可以不同，双维度分析会自动对齐较短的期数。

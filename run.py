@@ -171,10 +171,10 @@ def main():
             raw = fetch_us_price(codes, out_dir, p_periods)
             ind_fn = industry_us
         else:
-            from data_cn import fetch_codes_from_index, fetch_cn_price
+            from data_cn import fetch_codes_from_index, fetch_cn_price, fetch_cn_names
             codes = fetch_codes_from_index(config['stock_codes']['source_arg'])
             raw = fetch_cn_price(codes, out_dir, p_periods)
-            names = {c: c for c in codes}
+            names = fetch_cn_names(codes)
             ind_fn = industry_hk
 
         rows = []
@@ -250,10 +250,10 @@ def main():
             raw = fetch_us_revenue(codes, out_dir, r_periods)
             ind_fn = industry_us
         else:
-            from data_cn import fetch_codes_from_index, fetch_cn_revenue
+            from data_cn import fetch_codes_from_index, fetch_cn_revenue, fetch_cn_names
             codes = fetch_codes_from_index(config['stock_codes']['source_arg'])
             raw = fetch_cn_revenue(codes, out_dir)
-            names = {c: c for c in codes}
+            names = fetch_cn_names(codes)
             ind_fn = industry_hk
 
         rows = []

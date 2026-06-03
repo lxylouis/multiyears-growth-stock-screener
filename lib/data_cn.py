@@ -86,6 +86,23 @@ def fetch_cn_price(codes: list, out_dir: str, periods: list) -> dict:
     return raw
 
 
+def fetch_cn_names(codes: list) -> dict:
+    """获取A股名称字典 {code: name}"""
+    try:
+        # stock_info_a_code_name 返回 code / name 两列
+        info = ak.stock_info_a_code_name()
+        info['code'] = info['code'].astype(str).str.zfill(6)
+        names = {}
+        for _, r in info.iterrows():
+            names[r['code']] = r['name']
+        valid = {c: names.get(c, c) for c in codes}
+        print(f"  ✅ 获取 {len(valid)} 只A股名称成功")
+        return valid
+    except Exception as e:
+        print(f"  ⚠️  获取A股名称失败 ({e})，回退到代码显示")
+        return {c: c for c in codes}
+
+
 def parse_financial_value(val) -> float:
     """解析 '547.03亿', '3.81万' 为 float（亿元）"""
     if val is None or val == '' or val is False or val == 'False':
